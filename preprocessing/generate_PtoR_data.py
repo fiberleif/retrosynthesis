@@ -37,7 +37,7 @@ def clear_map_canonical_smiles(smi, canonical=True, root=-1):
 def get_cano_map_number(smi,root=-1):
     atommap_mol = Chem.MolFromSmiles(smi)
     canonical_mol = Chem.MolFromSmiles(clear_map_canonical_smiles(smi,root=root))
-    cano2atommapIdx = atommap_mol.GetSubstructMatch(canonical_mol)
+    cano2atommapIdx = atommap_mol.GetSubstructMatch(canonical_mol)   # ids in canonical mol corresponding to atommap mol
     correct_mapped = [canonical_mol.GetAtomWithIdx(i).GetSymbol() == atommap_mol.GetAtomWithIdx(index).GetSymbol() for i,index in enumerate(cano2atommapIdx)]
     atom_number = len(canonical_mol.GetAtoms())
     if np.sum(correct_mapped) < atom_number or len(cano2atommapIdx) < atom_number:
@@ -379,7 +379,7 @@ def multi_process(data):
             for k in range(times):
                 pro_root_atom_map = product_roots[k]
                 pro_root = get_root_id(pro_mol, root_map_number=pro_root_atom_map)
-                cano_atom_map = get_cano_map_number(product, root=pro_root)
+                cano_atom_map = get_cano_map_number(product, root=pro_root)  # length of atoms in canonical mol
                 if cano_atom_map is None:
                     return_status["status"] = "error_mapping"
                     return return_status
@@ -388,8 +388,8 @@ def multi_process(data):
                 aligned_reactants_order = []
                 rea_atom_map_numbers = [list(map(int, re.findall(r"(?<=:)\d+", rea))) for rea in reactant]
                 used_indices = []
-                for i, rea_map_number in enumerate(rea_atom_map_numbers):
-                    for j, map_number in enumerate(cano_atom_map):
+                for i, rea_map_number in enumerate(rea_atom_map_numbers): # each reactant
+                    for j, map_number in enumerate(cano_atom_map):  # each atom in canonical product
                         # select mapping reactans
                         if map_number in rea_map_number:
                             rea_root = get_root_id(Chem.MolFromSmiles(reactant[i]), root_map_number=map_number)
@@ -515,7 +515,11 @@ if __name__ == '__main__':
         else:
             datadir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/{}'.format(args.dataset.lower())
 
-        savedir = '/home/guoqingliu/retro_blob//projects/reaction_prediction/data/raw/{0}_rsmiles_augmented_versions/{0}_PtoR_aug{1}'.format(args.dataset.lower(), args.augmentation)
+        print('args.canonical', args.canonical)
+        if args.canonical:
+            savedir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/{0}_random_augmented_versions/{0}_PtoR_aug{1}'.format(args.dataset.lower(), args.augmentation)
+        else:
+            savedir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/{0}_rsmiles_augmented_versions/{0}_PtoR_aug{1}'.format(args.dataset.lower(), args.augmentation)
 
         savedir += args.postfix
         if not os.path.exists(savedir):

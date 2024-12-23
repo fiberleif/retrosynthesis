@@ -14,4 +14,10 @@
 # python generate_PtoR_data.py -dataset USPTO_50K -augmentation 40 -processes 24
 
 # augumentation 80
-python generate_PtoR_data.py -dataset USPTO_50K -augmentation 80 -processes 24
+# python generate_PtoR_data.py -dataset USPTO_50K -augmentation 80 -processes 24
+
+# augumentation 20, randomized smiles for both sides
+python generate_PtoR_data.py -dataset USPTO_50K -augmentation 20 -processes 24 -canonical
+
+# augumentation 40, randomized smiles for both sides
+python generate_PtoR_data.py -dataset USPTO_50K -augmentation 40 -processes 24 -canonical
