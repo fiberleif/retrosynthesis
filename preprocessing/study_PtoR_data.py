@@ -274,6 +274,17 @@ def preprocess(save_dir, reactants, products,set_name, augmentation=1, reaction_
         'empty_p':0,
         'empty_r':0,
     }
+
+    skip_dict_reactions = {
+        'invalid_p': [],
+        'invalid_r': [],
+        'small_p': [],
+        'small_r': [],
+        'error_mapping': [],
+        'error_mapping_p': [],
+        'empty_p': [],
+        'empty_r':  [],
+    }
     processes = multiprocessing.cpu_count() if processes < 0 else processes
     pool = multiprocessing.Pool(processes=processes)
     results = pool.map(func=multi_process,iterable=data)
@@ -283,6 +294,7 @@ def preprocess(save_dir, reactants, products,set_name, augmentation=1, reaction_
     for result in tqdm(results):
         if result['status'] != 0:
             skip_dict[result['status']] += 1
+            skip_dict_reactions[result['status']].append(result['reaction'])
             continue
         if character:
             for i in range(len(result['src_data'])):
@@ -296,16 +308,27 @@ def preprocess(save_dir, reactants, products,set_name, augmentation=1, reaction_
     print('size', len(src_data))
     for key,value in skip_dict.items():
         print(f"{key}:{value},{value/len(reactants)}")
-    if augmentation != 999:
-        with open(
-                os.path.join(save_dir, 'src-{}.txt'.format(set_name)), 'w') as f:
-            for src in src_data:
-                f.write('{}\n'.format(src))
+    # if augmentation != 999:
+    #     with open(
+    #             os.path.join(save_dir, 'src-{}.txt'.format(set_name)), 'w') as f:
+    #         for src in src_data:
+    #             f.write('{}\n'.format(src))
 
-        with open(
-                os.path.join(save_dir, 'tgt-{}.txt'.format(set_name)), 'w') as f:
-            for tgt in tgt_data:
-                f.write('{}\n'.format(tgt))
+    #     with open(
+    #             os.path.join(save_dir, 'tgt-{}.txt'.format(set_name)), 'w') as f:
+    #         for tgt in tgt_data:
+    #             f.write('{}\n'.format(tgt))
+
+    # save skip_dict_reactions.
+    os.makedirs(f'./uspto_full_rsmiles_filtered_samples/{set_name}', exist_ok=True)
+
+    for error_name, reactions in skip_dict_reactions.items():
+        if len(reactions) == 0:
+            continue
+        with open(f'./uspto_full_rsmiles_filtered_samples/{set_name}/{error_name}.txt', 'w') as f:
+            for reaction in reactions:
+                f.write(f'{reaction}\n')
+
     return src_data,tgt_data
 
 
@@ -313,6 +336,7 @@ def multi_process(data):
     pt = re.compile(r':(\d+)]')
     product = data['product']
     reactant = data['reactant']
+
     augmentation = data['augmentation']
     pro_mol = Chem.MolFromSmiles(product)
     rea_mol = Chem.MolFromSmiles(reactant)
@@ -324,6 +348,7 @@ def multi_process(data):
         "src_data":[],
         "tgt_data":[],
         "edit_distance":0,
+        "reaction": f"{reactant}>>{product}"
     }
     # if ",".join(rids) != ",".join(pids):  # mapping is not 1:1
     #     return_status["status"] = "error_mapping"
@@ -337,11 +362,11 @@ def multi_process(data):
         return_status["status"] = "empty_r"
     if rea_mol is None:
         return_status["status"] = "invalid_r"
-    if len(rea_mol.GetAtoms()) < 5:
+    if "" != reactant and len(rea_mol.GetAtoms()) < 5:
         return_status["status"] = "small_r"
     if pro_mol is None:
         return_status["status"] = "invalid_p"
-    if len(pro_mol.GetAtoms()) == 1:
+    if "" != product and len(pro_mol.GetAtoms()) == 1:
         return_status["status"] = "small_p"
     if not all([a.HasProp('molAtomMapNumber') for a in pro_mol.GetAtoms()]):
         return_status["status"] = "error_mapping_p"
@@ -510,12 +535,8 @@ if __name__ == '__main__':
                 )
 
     else:
-        if args.dataset == "USPTO_50K":
-            datadir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/uspto50k/gln_split/'
-        else:
-            datadir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/{}'.format(args.dataset.lower())
-
-        savedir = '/home/guoqingliu/retro_blob//projects/reaction_prediction/data/raw/{0}_rsmiles_augmented_versions/{0}_PtoR_aug{1}'.format(args.dataset.lower(), args.augmentation)
+        datadir = '/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/{}'.format(args.dataset.lower())
+        savedir = '/home/guoqingliu/retro_blob//projects/reaction_prediction/data/raw/{}_PtoR_aug{}'.format(args.dataset.lower(), args.augmentation)
 
         savedir += args.postfix
         if not os.path.exists(savedir):
@@ -528,6 +549,8 @@ if __name__ == '__main__':
                 csv_path = f"{datadir}/raw_val.csv"
                 csv = pd.read_csv(csv_path)
                 reaction_list += list(csv["reactants>reagents>production"])
+
+            print("Total Data Size", len(reaction_list))
 
             # random.shuffle(reaction_list)
             reactant_smarts_list = list(
@@ -549,6 +572,9 @@ if __name__ == '__main__':
 
             # duplicate multiple product reactions into multiple ones with one product each
             multiple_product_indices = [i for i in range(len(sub_prod_list)) if "." in sub_prod_list[i]]
+
+            print(f"Number of reactions with multiple products: {len(multiple_product_indices)}")
+
             for index in multiple_product_indices:
                 products = sub_prod_list[index].split(".")
                 for product in products:
@@ -557,6 +583,7 @@ if __name__ == '__main__':
             for index in multiple_product_indices[::-1]:
                 del sub_react_list[index]
                 del sub_prod_list[index]
+
             src_data, tgt_data = preprocess(
                 save_dir,
                 sub_react_list,

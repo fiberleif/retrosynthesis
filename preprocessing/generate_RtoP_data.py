@@ -310,11 +310,21 @@ def preprocess(save_dir, reactants, products,set_name, augmentation=1, reaction_
         'empty_p':0,
         'empty_r':0,
     }
-    processes = multiprocessing.cpu_count() if processes < 0 else processes
-    pool = multiprocessing.Pool(processes=processes)
-    results = pool.map(func=multi_process,iterable=data)
-    pool.close()
-    pool.join()
+    # processes = multiprocessing.cpu_count() if processes < 0 else processes
+    # pool = multiprocessing.Pool(processes=processes)
+    # results = pool.map(func=multi_process,iterable=data)
+    # pool.close()
+    # pool.join()
+
+    # single process
+    results = []
+    for i,d in enumerate(data):
+        if i == 848509 or i == 2463272: # != 848509 # !=2463272
+            continue
+        print(f"Processing {i}/{len(data)}")
+        print(d)
+        results.append(multi_process(d))
+
     edit_distances = []
     for result in tqdm(results):
         if result['status'] != 0:
@@ -410,7 +420,7 @@ def multi_process(data):
             pro_atom_map_numbers = [list(map(int, re.findall(r"(?<=:)\d+", pro))) for pro in product]
             full_pro_atom_map_numbers = set(map(int, re.findall(r"(?<=:)\d+", ".".join(product))))
             for k in range(times):
-                tmp = list(zip(reactant, reactant_roots[k],rea_atom_map_numbers))
+                tmp = list(zip(reactant, reactant_roots[k], rea_atom_map_numbers))
                 random.shuffle(tmp)
                 reactant_k, reactant_roots_k,rea_atom_map_numbers_k = [i[0] for i in tmp], [i[1] for i in tmp], [i[2] for i in tmp]
                 aligned_reactants = []
@@ -427,6 +437,9 @@ def multi_process(data):
                     rea_smi = clear_map_canonical_smiles(rea, canonical=True, root=rea_root)
                     aligned_reactants.append(rea_smi)
                     all_atom_map.extend(cano_atom_map)
+
+                if len(all_atom_map) == 0:
+                    continue
 
                 for i, pro_map_number in enumerate(pro_atom_map_numbers):
                     reactant_candidates = []
@@ -451,32 +464,33 @@ def multi_process(data):
                 aligned_products = [item[0] for item in sorted_products]
                 pro_smi = ".".join(aligned_products)
                 if separated:
-                    reactants = []
-                    reagents = []
-                    for i,cano_atom_map in enumerate(rea_atom_map_numbers_k):
-                        if len(set(cano_atom_map) & full_pro_atom_map_numbers) > 0:
-                            reactants.append(aligned_reactants[i])
-                        else:
-                            reagents.append(aligned_reactants[i])
-                    rea_smi = ".".join(reactants)
-                    reactant_tokens = smi_tokenizer(rea_smi)
-                    if len(reagents) > 0 :
-                        reactant_tokens += " <separated> " + smi_tokenizer(".".join(reagents))
+                    pass
+                    # reactants = []
+                    # reagents = []
+                    # for i,cano_atom_map in enumerate(rea_atom_map_numbers_k):
+                    #     if len(set(cano_atom_map) & full_pro_atom_map_numbers) > 0:
+                    #         reactants.append(aligned_reactants[i])
+                    #     else:
+                    #         reagents.append(aligned_reactants[i])
+                    # rea_smi = ".".join(reactants)
+                    # reactant_tokens = smi_tokenizer(rea_smi)
+                    # if len(reagents) > 0 :
+                    #     reactant_tokens += " <separated> " + smi_tokenizer(".".join(reagents))
                 else:
                     rea_smi = ".".join(aligned_reactants)
                     reactant_tokens = smi_tokenizer(rea_smi)
                 product_tokens = smi_tokenizer(pro_smi)
                 return_status['src_data'].append(reactant_tokens)
                 return_status['tgt_data'].append(product_tokens)
-                if reversable:
-                    aligned_reactants.reverse()
-                    aligned_products.reverse()
-                    pro_smi = ".".join(aligned_products)
-                    rea_smi = ".".join(aligned_reactants)
-                    product_tokens = smi_tokenizer(pro_smi)
-                    reactant_tokens = smi_tokenizer(rea_smi)
-                    return_status['src_data'].append(reactant_tokens)
-                    return_status['tgt_data'].append(product_tokens)
+                # if reversable:
+                #     aligned_reactants.reverse()
+                #     aligned_products.reverse()
+                #     pro_smi = ".".join(aligned_products)
+                #     rea_smi = ".".join(aligned_reactants)
+                #     product_tokens = smi_tokenizer(pro_smi)
+                #     reactant_tokens = smi_tokenizer(rea_smi)
+                #     return_status['src_data'].append(reactant_tokens)
+                #     return_status['tgt_data'].append(product_tokens)
         else:
             cano_product = clear_map_canonical_smiles(product)
             cano_reactanct = ".".join([clear_map_canonical_smiles(rea) for rea in reactant])
@@ -491,7 +505,7 @@ def multi_process(data):
                 return_status['src_data'].append(smi_tokenizer(rea_smi))
                 return_status['tgt_data'].append(smi_tokenizer(pro_smi))
         edit_distances = []
-        for src,tgt in zip(return_status['src_data'],return_status['tgt_data']):
+        for src,tgt in zip(return_status['src_data'], return_status['tgt_data']):
             edit_distances.append(textdistance.levenshtein.distance(src.split(),tgt.split()))
         return_status['edit_distance'] = np.mean(edit_distances)
     return return_status
@@ -506,6 +520,7 @@ if __name__ == '__main__':
     parser.add_argument("-seed",type=int,default=33)
     parser.add_argument("-processes",type=int,default=-1)
     parser.add_argument("-test_only", action="store_true")
+    parser.add_argument("-val_only", action="store_true")
     parser.add_argument("-train_only", action="store_true")
     parser.add_argument("-test_except", action="store_true")
     parser.add_argument("-validastrain", action="store_true")
@@ -515,23 +530,31 @@ if __name__ == '__main__':
     parser.add_argument("-postfix",type=str,default="")
     args = parser.parse_args()
     print('preprocessing dataset {}...'.format(args.dataset))
-    assert args.dataset in ['USPTO_50K', 'USPTO_full','USPTO-MIT']
+    assert args.dataset in ['USPTO_50K', 'USPTO_full','PISTACHIO']
     print(args)
     if args.test_only:
         datasets = ['test']
     elif args.train_only:
         datasets = ['train']
+    elif args.val_only:
+        datasets = ['val']
     elif args.test_except:
-        datasets = ['valid', 'train']
+        datasets = ['val', 'train']
     elif args.validastrain:
         datasets = ['test', 'val', 'train']
     else:
         datasets = ['test', 'val', 'train']
 
     random.seed(args.seed)
-    if args.dataset == "USPTO-MIT":
-        datadir = './dataset/{}'.format(args.dataset)
-        savedir = './dataset/{}_RtoP_aug{}'.format(args.dataset,args.augmentation)
+    if args.dataset == "PISTACHIO":
+        # datadir = './dataset/{}'.format(args.dataset)
+        # savedir = './dataset/{}_RtoP_aug{}'.format(args.dataset,args.augmentation)
+
+        datadir = "/home/guoqingliu/Pistachio_2023Q2_v2_forward/"
+        savedir = "/home/guoqingliu/Pistachio_2023Q2_v2_forward/RtoP_{0}_aug{1}".format(args.dataset, args.augmentation)
+
+        print("args.separated", args.separated)
+
         if args.separated:
             savedir += "_separated"
         savedir += args.postfix
@@ -541,16 +564,24 @@ if __name__ == '__main__':
         for i, data_set in enumerate(datasets):
             with open(os.path.join(datadir,f"{data_set}.txt"),"r") as f:
                 reaction_list = f.readlines()
-                if args.validastrain and data_set == "train":
-                    print("validastrain")
-                    with open(os.path.join(datadir, f"val.txt"), "r") as f:
-                        reaction_list += f.readlines()
+
+                # remove "\n" in each line
+                reaction_list = [x.strip() for x in reaction_list]
+
+                # if args.validastrain and data_set == "train":
+                #     print("validastrain")
+                #     with open(os.path.join(datadir, f"val.txt"), "r") as f:
+                #         reaction_list += f.readlines()
+                # reactant_smarts_list = list(
+                #     map(lambda x: x.split('>>')[0], reaction_list))
+                # product_smarts_list = list(
+                #     map(lambda x: x.split('>>')[1], reaction_list))
+                # product_smarts_list = list(
+                #     map(lambda x: x.split(' ')[0], product_smarts_list))
                 reactant_smarts_list = list(
-                    map(lambda x: x.split('>>')[0], reaction_list))
+                    map(lambda x: x.split('>')[0], reaction_list))
                 product_smarts_list = list(
-                    map(lambda x: x.split('>>')[1], reaction_list))
-                product_smarts_list = list(
-                    map(lambda x: x.split(' ')[0], product_smarts_list))
+                    map(lambda x: x.split('>')[2], reaction_list))
 
                 save_dir = os.path.join(savedir, data_set)
                 src_data, tgt_data = preprocess(
@@ -567,7 +598,9 @@ if __name__ == '__main__':
                 )
 
     else:
-        datadir = './dataset/{}'.format(args.dataset)
+        assert args.dataset in ['USPTO_50K', 'USPTO_full']
+        # datadir = './dataset/{}'.format(args.dataset)
+        datadir = '/home/guoqingliu/uspto50k/raw'
         savedir = './dataset/{}_RtoP_aug{}'.format(args.dataset, args.augmentation)
         if args.separated:
             savedir += "_separated"
