@@ -1,6 +1,6 @@
 import os
 
-AUG_SIZE = 40
+AUG_SIZE = 80
 aug_data_dir=f"/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/uspto_50k_rsmiles_augmented_versions/uspto_50k_PtoR_aug{AUG_SIZE}/"
 filtered_aug_data_dir=f"/home/guoqingliu/retro_blob/projects/reaction_prediction/data/raw/uspto_50k_rsmiles_augmented_versions/uspto_50k_PtoR_aug{AUG_SIZE}_unique/"
 
@@ -35,7 +35,7 @@ for FOLD in ["train", "val", "test"]:
         curr_tgt_lines = tgt_lines[i:i+AUG_SIZE]
         curr_unique_src_tgt_pairs = list(set(zip(curr_src_lines, curr_tgt_lines)))
         curr_unique_src_lines = list(set(curr_src_lines))
-        print(f"{len(curr_unique_src_tgt_pairs)} unique src-tgt pairs vs {len(curr_unique_src_lines)} unique src lines")
+        # print(f"{len(curr_unique_src_tgt_pairs)} unique src-tgt pairs vs {len(curr_unique_src_lines)} unique src lines")
         total_unique_src_tgt_pairs.extend(curr_unique_src_tgt_pairs)
         total_unique_src_lines.extend(curr_unique_src_lines)
 
@@ -53,7 +53,7 @@ for FOLD in ["train", "val", "test"]:
     os.makedirs(filtered_src_dir, exist_ok=True)
 
     with open(filtered_src_file_path, "w") as f:
-        for src_line in total_unique_src_lines:
+        for src_line, tgt_line in total_unique_src_tgt_pairs:
             f.write(src_line)
     with open(filtered_tgt_file_path, "w") as f:
         for src_line, tgt_line in total_unique_src_tgt_pairs:
